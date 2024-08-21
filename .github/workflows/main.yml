@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  main-pr-release-job:
+    name: Main PR Release
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'main'
+    steps:
+      - name: Set Git user identity
+        run: |
+          git config --global user.email "o.arnedoc@uniandes.com"
+          git config --global user.name "Orlando Arnedo"
+      - name: Checkout de repositorio
+        uses: actions/checkout@v2
+      - name: Fetch Ramas Remotas
+        run: git fetch --all
+      - name: Get Timestamp
+        id: timestamp
+        run: |
+          echo "::set-output name=timestamp::$(date +'%Y_%m_%d_%H_%M_%S')"
+      - name: Creacion de Release Branch
+        run: |
+          timestamp=$(echo "${{ steps.timestamp.outputs.timestamp }}")
+          git checkout -b release-branch-$timestamp
+          git push origin release-branch-$timestamp
+      - name: Setup Python Environment
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.8"
+      - name: Instalación de librerías y dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Correr pruebas en Release Branch
+        run: |
+          python -m unittest discover -s tests
+      - name: Verificar resultado de pruebas en Release Branch
+        run: |
+          if [ $? -eq 0 ]; then
+            echo "Las pruebas pasan en release branch. Merging to main."
+          else
+            echo "Las pruebas fallan en release branch. Exiting."
+            exit 1
+          fi
+      - name: Merge Release Branch into Main
+        run: |
+          git checkout main
+          git pull origin main
+          timestamp=$(echo "${{ steps.timestamp.outputs.timestamp }}")
+          git merge --allow-unrelated-histories --strategy=recursive --strategy-option=theirs release-branch-$timestamp
+          git push origin main
